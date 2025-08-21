@@ -31,7 +31,8 @@ class XHSSelectors:
     # 内容填写
     TITLE_INPUT = ".d-text"
     TITLE_INPUT_ALT = "[placeholder*='标题']"
-    CONTENT_EDITOR = ".ql-editor"
+    # CONTENT_EDITOR = ".ql-editor"
+    CONTENT_EDITOR = "div[contenteditable='true'][data-placeholder*='正文描述']"
     
     # 发布按钮
     PUBLISH_BUTTON = ".publishBtn"

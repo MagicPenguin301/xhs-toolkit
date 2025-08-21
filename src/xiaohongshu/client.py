@@ -327,6 +327,7 @@ class XHSClient:
             # 即使等待失败，也继续后续流程
     
     async def _fill_note_content(self, note: XHSNote) -> None:
+
         """填写笔记内容"""
         driver = self.browser_manager.driver
         wait = WebDriverWait(driver, 15)
@@ -379,7 +380,8 @@ class XHSClient:
             # 尝试多个内容选择器
             content_selectors = [
                 ".ql-editor",
-                "[placeholder*='内容']",
+                "div[contenteditable='true'][data-placeholder*='正文描述']",
+                "[placeholder*='正文描述']",
                 "[placeholder*='content']",
                 "textarea",
                 ".content-input",
@@ -614,7 +616,8 @@ class XHSClient:
             # 检查内容输入框是否存在
             content_selectors = [
                 ".ql-editor",
-                "[placeholder*='内容']",
+                "div[contenteditable='true'][data-placeholder*='正文描述']",
+                "[placeholder*='正文描述']",
                 "[placeholder*='content']",
                 "textarea",
                 ".content-input",
