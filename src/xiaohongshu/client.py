@@ -376,9 +376,25 @@ class XHSClient:
         # 填写内容
         try:
             logger.info("📝 填写内容...")
-            
+
+            # # DEBUG
+            # inputs = driver.find_elements(By.CSS_SELECTOR, "input, textarea, [contenteditable='true']")
+            # logger.info(f"共找到 {len(inputs)} 个输入类元素")
+            # for i, el in enumerate(inputs):
+            #     try:
+            #         attrs = driver.execute_script(
+            #             "var items = {}; for (let i=0; i<arguments[0].attributes.length; ++i) "
+            #             "items[arguments[0].attributes[i].name] = arguments[0].attributes[i].value; return items;",
+            #             el
+            #         )
+            #         logger.info(f"元素{i}: {attrs}")
+            #     except:
+            #         pass
+
+
             # 尝试多个内容选择器
             content_selectors = [
+                "[data-placeholder*='正文描述']",
                 ".ql-editor",
                 "div[contenteditable='true'][data-placeholder*='正文描述']",
                 "[placeholder*='正文描述']",
@@ -615,6 +631,7 @@ class XHSClient:
             
             # 检查内容输入框是否存在
             content_selectors = [
+                "[data-placeholder*='正文描述']",
                 ".ql-editor",
                 "div[contenteditable='true'][data-placeholder*='正文描述']",
                 "[placeholder*='正文描述']",
