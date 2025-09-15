@@ -234,7 +234,7 @@ class MCPServer:
         
         @self.mcp.tool()
         async def smart_publish_note(title: str, content: str, images=None, videos=None, 
-                                   topics=None, location: str = "") -> str:
+                                   topics=None, location: str = "", callback_url="") -> str:
             """
             发布小红书笔记（支持多种输入格式）
             
@@ -251,6 +251,7 @@ class MCPServer:
                 videos: 视频路径（目前仅支持本地文件）
                 topics: 话题，支持字符串或数组格式
                 location (str, optional): 位置信息
+                callback_url: 任务结束后的回调url，如不为空，则用于在发布任务结束向n8n报告
             
             Returns:
                 str: 任务ID和状态信息
@@ -285,7 +286,7 @@ class MCPServer:
                 task_id = self.task_manager.create_task(note)
                 
                 # 启动后台任务
-                async_task = asyncio.create_task(self._execute_publish_task(task_id))
+                async_task = asyncio.create_task(self._execute_publish_task(task_id, callback_url))
                 self.task_manager.running_tasks[task_id] = async_task
                 
                 result = {
@@ -532,7 +533,7 @@ class MCPServer:
                 }, ensure_ascii=False, indent=2)
         
     
-    async def _execute_publish_task(self, task_id: str) -> None:
+    async def _execute_publish_task(self, task_id: str, callback_url: str = "") -> None:
         """
         执行发布任务的后台逻辑
         
@@ -647,6 +648,11 @@ class MCPServer:
                 result={"success": False, "message": error_msg}
             )
         finally:
+            # callback if applicable
+            if callback_url:
+                import requests
+                time.sleep(3)
+                requests.get(callback_url)
             # 清理运行任务记录
             if task_id in self.task_manager.running_tasks:
                 del self.task_manager.running_tasks[task_id]

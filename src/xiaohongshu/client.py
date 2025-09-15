@@ -325,7 +325,7 @@ class XHSClient:
         except Exception as e:
             logger.warning(f"⚠️ 等待视频上传完成时出错: {e}")
             # 即使等待失败，也继续后续流程
-    
+
     async def _fill_note_content(self, note: XHSNote) -> None:
 
         """填写笔记内容"""
@@ -341,7 +341,7 @@ class XHSClient:
         # 填写标题
         try:
             logger.info("✏️ 填写标题...")
-            title = clean_text_for_browser(truncate_text(note.title, 20))
+            title = clean_text_for_browser(truncate_text(note.title, 40))
             
             # 尝试多个标题选择器
             title_selectors = [
@@ -377,21 +377,6 @@ class XHSClient:
         try:
             logger.info("📝 填写内容...")
 
-            # # DEBUG
-            # inputs = driver.find_elements(By.CSS_SELECTOR, "input, textarea, [contenteditable='true']")
-            # logger.info(f"共找到 {len(inputs)} 个输入类元素")
-            # for i, el in enumerate(inputs):
-            #     try:
-            #         attrs = driver.execute_script(
-            #             "var items = {}; for (let i=0; i<arguments[0].attributes.length; ++i) "
-            #             "items[arguments[0].attributes[i].name] = arguments[0].attributes[i].value; return items;",
-            #             el
-            #         )
-            #         logger.info(f"元素{i}: {attrs}")
-            #     except:
-            #         pass
-
-
             # 尝试多个内容选择器
             content_selectors = [
                 "[data-placeholder*='正文描述']",
@@ -424,12 +409,22 @@ class XHSClient:
             cleaned_content = clean_text_for_browser(note.content)
             
             # 分段输入，正确处理换行
+            from random import random
             lines = cleaned_content.split('\n')
             for i, line in enumerate(lines):
-                content_input.send_keys(line)
+                for char in line:
+                    if ord(char) > 0xFFFF:  # 超出 BMP，可能是 emoji
+                        driver.execute_script("""
+                        arguments[0].value += arguments[1];
+                        arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+                        """, content_input, char)
+                    else:
+                        content_input.send_keys(char)
+                    await asyncio.sleep(random()/50)
+                # content_input.send_keys(line)
                 if i < len(lines) - 1:
                     content_input.send_keys(Keys.ENTER)
-                await asyncio.sleep(0.1)  # 短暂等待
+                await asyncio.sleep(random()/10)  # 短暂等待
             
             logger.info("✅ 内容已填写")
             
