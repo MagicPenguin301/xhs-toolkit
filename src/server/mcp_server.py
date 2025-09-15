@@ -234,7 +234,7 @@ class MCPServer:
         
         @self.mcp.tool()
         async def smart_publish_note(title: str, content: str, images=None, videos=None, 
-                                   topics=None, location: str = "", callback_url="") -> str:
+                                   topics=None, collection="", location: str = "", callback_url="") -> str:
             """
             发布小红书笔记（支持多种输入格式）
             
@@ -250,6 +250,7 @@ class MCPServer:
                        - 逗号分隔字符串："a.jpg,b.jpg,c.jpg"
                 videos: 视频路径（目前仅支持本地文件）
                 topics: 话题，支持字符串或数组格式
+                collection: 合集，字符串格式 
                 location (str, optional): 位置信息
                 callback_url: 任务结束后的回调url，如不为空，则用于在发布任务结束向n8n报告
             
@@ -274,13 +275,14 @@ class MCPServer:
                     title=title,
                     content=content,
                     topics=topics,
+                    collection=collection,
                     location=location,
                     images=images,
                     videos=videos
                 )
                 
                 # 记录解析结果
-                logger.info(f"✅ 智能解析结果: 图片{len(note.images) if note.images else 0}张, 视频{len(note.videos) if note.videos else 0}个, 话题{len(note.topics) if note.topics else 0}个")
+                logger.info(f"✅ 智能解析结果: 图片{len(note.images) if note.images else 0}张, 视频{len(note.videos) if note.videos else 0}个, 话题{len(note.topics) if note.topics else 0}个, 合集: {note.collection}")
                 
                 # 创建异步任务
                 task_id = self.task_manager.create_task(note)

@@ -23,6 +23,7 @@ class XHSNote(BaseModel):
     videos: Optional[List[str]] = None
     topics: Optional[List[str]] = None
     location: Optional[str] = None
+    collection: Optional[str] = None
     
     @field_validator('title')
     @classmethod
@@ -204,7 +205,7 @@ class XHSNote(BaseModel):
     
     @classmethod
     async def async_smart_create(cls, title: str, content: str, topics=None,
-                                location: str = "", images=None, videos=None) -> 'XHSNote':
+                                location: str = "", collection="", images=None, videos=None) -> 'XHSNote':
         """
         异步智能创建笔记对象，支持多种输入格式（包括URL）
         
@@ -213,6 +214,7 @@ class XHSNote(BaseModel):
             content: 笔记内容
             topics: 话题（支持字符串、列表等多种格式）
             location: 位置信息
+            collection: 笔记合集
             images: 图片，支持格式：
                    - 本地路径："image.jpg" 或 ["/path/to/image.jpg"]
                    - 网络地址："https://example.com/image.jpg"
@@ -249,6 +251,7 @@ class XHSNote(BaseModel):
             images=processed_images,
             videos=video_list,
             topics=topic_list,
+            collection=collection,
             location=location if location else None
         )
 

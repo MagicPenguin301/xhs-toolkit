@@ -122,7 +122,7 @@ class XHSClient:
             
             # 填写笔记内容
             await self._fill_note_content(note)
-            
+
             # 发布笔记
             return await self._submit_note(note)
             
@@ -427,7 +427,7 @@ class XHSClient:
                 await asyncio.sleep(random()/10)  # 短暂等待
             
             logger.info("✅ 内容已填写")
-            
+
         except Exception as e:
             raise PublishError(f"填写内容失败: {str(e)}", publish_step="填写内容") from e
         
@@ -446,7 +446,43 @@ class XHSClient:
             logger.info("📋 没有话题需要填写")
         
         await asyncio.sleep(2)
-    
+
+        # 选择集合
+        if note.collection:
+            try:
+                driver = self.browser_manager.driver
+                wait = WebDriverWait(driver, 30)
+
+                # 1️⃣ 点击触发按钮
+                logger.info("🔍 查找集合下拉框触发按钮 ...")
+                trigger = wait.until(
+                    EC.element_to_be_clickable(
+                        (By.XPATH, "//div[contains(@class,'d-select-wrapper') and .//div[text()='添加合集']]")
+                    )
+                )
+                trigger.click()
+                logger.info("✅ 已点击集合下拉框触发按钮")
+
+                # 给下拉框展开动画一点时间
+                await asyncio.sleep(0.5)
+
+                # 2️⃣ 等待选项出现
+                logger.info(f"🔍 查找集合选项: {note.collection} ...")
+                option_locator = (By.XPATH, f"//div[@class='item' and normalize-space(text())='{note.collection}']")
+                option = wait.until(EC.visibility_of_element_located(option_locator))
+                logger.info(f"✅ 找到集合选项: {note.collection}")
+
+                # 3️⃣ 点击选项
+                wait.until(EC.element_to_be_clickable(option_locator))
+                option.click()
+                logger.info(f"✅ 成功选择集合: {note.collection}")
+
+                # 给页面一点响应时间
+                await asyncio.sleep(0.5)
+
+            except Exception as e:
+                logger.warning(f"⚠️ 选择集合 '{note.collection}' 时出错: {e}")
+        
     async def _submit_note(self, note: XHSNote) -> XHSPublishResult:
         """提交发布笔记"""
         driver = self.browser_manager.driver
