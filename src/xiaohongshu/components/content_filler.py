@@ -327,7 +327,57 @@ class XHSContentFiller(IContentFiller):
         except Exception as e:
             logger.error(f"❌ 内容填写过程出错: {e}")
             return False
-    
+
+    async def _move_cursor_with_keys(self, content_editor, page_down_presses: int = 5):
+        """
+        【方案一：优化版】使用模拟按键将光标移动到末尾。
+        这是在JS方案失效时，最有效的备用方案。
+
+        Args:
+            content_editor: 编辑器元素。
+            page_down_presses: 按下PageDown键的次数，确保能选中所有文本。
+        """
+        from selenium.webdriver.common.action_chains import ActionChains
+        print("⌨️ 执行方案一：使用 [Shift+PageDown] + [ArrowRight] 移动光标...")
+        try:
+            driver = self.browser_manager.driver
+            
+            # 定义需要执行的同步操作
+            def perform_key_actions():
+                # 创建ActionChains实例
+                actions = ActionChains(driver)
+                
+                # 1. 点击编辑器，确保它处于激活状态
+                actions.click(content_editor)
+                actions.pause(0.2) # 短暂等待
+                
+                # 2. 按下 Shift 键
+                actions.key_down(Keys.SHIFT)
+                
+                # 3. 多次按下 Page Down 键来选中全部内容
+                for i in range(page_down_presses):
+                    actions.send_keys(Keys.PAGE_DOWN)
+                    actions.pause(0.1)
+                
+                # 4. 松开 Shift 键
+                actions.key_up(Keys.SHIFT)
+                
+                # 5. 按下右箭头键，光标会取消选中并移动到文本末尾
+                actions.send_keys(Keys.ARROW_RIGHT)
+                
+                # 6. 执行所有定义的操作
+                actions.perform()
+
+            # 在异步环境中，使用 to_thread 来运行同步的 ActionChains 代码
+            await asyncio.to_thread(perform_key_actions)
+            
+            print("✅ 模拟按键操作成功")
+            await asyncio.sleep(0.5) # 操作后等待一下，让UI刷新
+
+        except Exception as e:
+            print(f"❌ 模拟按键移动光标失败: {e}")
+
+        
     async def _perform_topics_automation(self, topics: List[str]) -> bool:
         """
         执行话题自动化填写 - 基于实测验证的完整实现
@@ -363,7 +413,8 @@ class XHSContentFiller(IContentFiller):
             # 2. 确保编辑器获得焦点并移动到末尾
             content_editor.click()
             await asyncio.sleep(0.3)
-            content_editor.send_keys(Keys.END)
+            # content_editor.send_keys(Keys.END)
+            await self._move_cursor_with_keys(content_editor, 10)
             await asyncio.sleep(0.2)
             
             # 3. 添加换行确保话题在新行

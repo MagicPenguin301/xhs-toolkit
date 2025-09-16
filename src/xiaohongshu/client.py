@@ -379,6 +379,7 @@ class XHSClient:
 
             # 尝试多个内容选择器
             content_selectors = [
+                ".tiptap.ProseMirror",
                 "[data-placeholder*='正文描述']",
                 ".ql-editor",
                 "div[contenteditable='true'][data-placeholder*='正文描述']",
