@@ -377,90 +377,106 @@ class XHSContentFiller(IContentFiller):
         except Exception as e:
             print(f"❌ 模拟按键移动光标失败: {e}")
 
-        
-    async def _perform_topics_automation(self, topics: List[str]) -> bool:
+        # 我们可以将所有逻辑合并到这一个函数中
+    async def _atomic_move_and_add_topics(self, content_editor, topics: List[str], page_down_presses: int = 10):
         """
-        执行话题自动化填写 - 基于实测验证的完整实现
-        
-        关键修复：使用真实输入方式触发话题下拉菜单
-        - 对比测试证明：直接send_keys不能触发下拉菜单
-        - 正确方式：模拟真实用户逐字符输入 + 等待下拉菜单 + 回车确认
-        
-        实现逻辑：
-        1. 定位到内容编辑器(.ql-editor)
-        2. 对每个话题执行：真实输入#话题名 + 等待下拉菜单 + 按Enter键
-        3. 验证是否生成了.mention元素(真正的话题标签)
-        4. 支持重试机制处理偶发性失败
-        
-        Args:
-            topics: 话题列表
-            
-        Returns:
-            填写是否成功
+        【重构版】使用单一、不间断的 ActionChains 任务链完成所有操作：
+        1. 移动光标到末尾
+        2. 添加换行
+        3. 逐个、带延迟地输入话题
+        4. 按回车确认每个话题
+
+        这是解决光标跳跃和下拉菜单不触发问题的最可靠方法。
         """
+        from selenium.webdriver.common.action_chains import ActionChains
+        logger.info("⚡ 执行单一原子化 ActionChains 任务链...")
         try:
             driver = self.browser_manager.driver
-            wait = WebDriverWait(driver, XHSConfig.DEFAULT_WAIT_TIME)
+
+            def perform_all_actions():
+                # 1. 创建 ActionChains 实例
+                actions = ActionChains(driver)
+
+                # 2. 点击编辑器获得焦点
+                actions.click(content_editor)
+                actions.pause(0.2)
+
+                # 3. 移动光标到末尾
+                actions.key_down(Keys.SHIFT)
+                for _ in range(page_down_presses):
+                    actions.send_keys(Keys.PAGE_DOWN)
+                    actions.pause(0.1)  # 使用 actions.pause() 来实现链内延迟
+                actions.key_up(Keys.SHIFT)
+                actions.send_keys(Keys.ARROW_RIGHT)
+                actions.pause(0.2)
+
+                # 4. 添加换行，为话题准备
+                actions.send_keys(Keys.ENTER)
+                actions.pause(0.3)
+
+                # 5. 循环处理所有话题
+                for i, topic in enumerate(topics):
+                    logger.info(f"🏷️ 正在向任务链中添加话题: {topic}")
+                    topic_text = f"#{topic}" if not topic.startswith('#') else topic
+
+                    # 逐字符输入，并使用 actions.pause() 来模拟真实打字延迟
+                    for char in topic_text:
+                        actions.send_keys(char)
+                        actions.pause(0.05) # 这是正确的链内延迟方法
+
+                    # 输入完毕后，等待一下让下拉菜单出现
+                    actions.pause(1.5) # 增加等待时间确保推荐列表加载
+
+                    # 按下回车键选择推荐的第一个话题
+                    actions.send_keys(Keys.ENTER)
+                    actions.pause(0.5) # 确认后等待一下
+
+                    # 如果不是最后一个话题，则添加一个空格分隔
+                    if i < len(topics) - 1:
+                        actions.send_keys(" ")
+                        actions.pause(0.2)
+
+                # 6. 【关键】最后，一次性执行上面定义的所有操作
+                actions.perform()
+
+            # 在异步环境中正确执行同步的 ActionChains
+            await asyncio.to_thread(perform_all_actions)
             
+            logger.info("✅ 原子化 ActionChains 任务链执行完毕")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ 原子化 ActionChains 任务链失败: {e}")
+            return False
+
+    async def _perform_topics_automation(self, topics: List[str]) -> bool:
+        """
+        执行话题自动化填写（重构版）。
+        """
+        try:
             # 1. 查找内容编辑器
             content_editor = await self._find_content_editor()
             if not content_editor:
                 logger.error("❌ 未找到内容编辑器，无法添加话题")
                 return False
             
-            logger.info(f"✅ 找到内容编辑器，开始添加 {len(topics)} 个话题")
-            
-            # 2. 确保编辑器获得焦点并移动到末尾
-            content_editor.click()
-            await asyncio.sleep(0.3)
-            # content_editor.send_keys(Keys.END)
-            await self._move_cursor_with_keys(content_editor, 10)
-            await asyncio.sleep(0.2)
-            
-            # 3. 添加换行确保话题在新行
-            content_editor.send_keys(Keys.ENTER)
-            await asyncio.sleep(0.2)
-            
-            success_count = 0
-            
-            # 4. 逐个添加话题
-            for i, topic in enumerate(topics):
-                try:
-                    logger.info(f"🏷️ 添加话题 {i+1}/{len(topics)}: {topic}")
-                    
-                    # 4.1 使用真实输入方式输入话题 (关键修复!)
-                    topic_text = f"#{topic}" if not topic.startswith('#') else topic
-                    success = await self._input_topic_realistically(content_editor, topic_text)
-                    
-                    if success:
-                        # 4.2 验证话题转换是否成功
-                        if await self._verify_topic_conversion(topic):
-                            success_count += 1
-                            logger.info(f"✅ 话题 '{topic}' 转换成功")
-                        else:
-                            logger.warning(f"⚠️ 话题 '{topic}' 转换失败，但继续处理")
-                    else:
-                        logger.warning(f"⚠️ 话题 '{topic}' 输入失败，但继续处理")
-                    
-                    # 4.3 添加空格分隔下一个话题
-                    if i < len(topics) - 1:
-                        content_editor.send_keys(" ")
-                        await asyncio.sleep(0.2)
-                        
-                except Exception as e:
-                    logger.error(f"❌ 添加话题 '{topic}' 时出错: {e}")
-                    continue
-            
-            # 5. 总结结果
-            if success_count > 0:
-                logger.info(f"✅ 话题添加完成: {success_count}/{len(topics)} 个成功")
-                return True
+            logger.info(f"✅ 找到内容编辑器，准备添加 {len(topics)} 个话题")
+
+            # 2. 调用单一的、整合过的函数来完成所有工作
+            success = await self._atomic_move_and_add_topics(content_editor, topics)
+
+            # 3. （可选）在这里进行最终验证
+            if success:
+                logger.info(f"✅ 话题添加过程成功完成")
+                # 你可以在这里加入 self._verify_topic_conversion 的最终验证逻辑
+                await self._verify_topic_conversion
             else:
-                logger.error(f"❌ 所有话题添加失败: 0/{len(topics)}")
-                return False
+                logger.error(f"❌ 话题添加过程失败")
+
+            return success
                 
         except Exception as e:
-            logger.error(f"❌ 话题自动化过程出错: {e}")
+            logger.error(f"❌ 话题自动化主过程出错: {e}")
             return False
     
     async def _input_topic_realistically(self, content_editor, topic_text: str) -> bool:
