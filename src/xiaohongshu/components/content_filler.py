@@ -469,7 +469,7 @@ class XHSContentFiller(IContentFiller):
             if success:
                 logger.info(f"✅ 话题添加过程成功完成")
                 # 你可以在这里加入 self._verify_topic_conversion 的最终验证逻辑
-                await self._verify_topic_conversion
+                # await self._verify_topic_conversion
             else:
                 logger.error(f"❌ 话题添加过程失败")
 
