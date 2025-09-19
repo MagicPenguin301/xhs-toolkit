@@ -155,9 +155,18 @@ class ChromeDriverManager:
         # 窗口大小
         chrome_options.add_argument('--window-size=1920,1080')
 
-        # 添加文件保存位置
-        chrome_options.add_argument(r'--user-data-dir=C:\Users\DELL\AppData\Local\Google\Chrome for Testing\User Data')
-        
+        # 根据操作系统设置 user-data-dir
+        import os
+        import tempfile
+        if os.name == "nt":  # Windows
+            chrome_options.add_argument(
+                r"--user-data-dir=C:\Users\DELL\AppData\Local\Google\Chrome for Testing\User Data"
+            )
+        else:  # Linux / Docker
+            # 使用临时目录，避免卷冲突和权限问题
+            tmp_user_data_dir = tempfile.mkdtemp()
+            chrome_options.add_argument(f"--user-data-dir={tmp_user_data_dir}")
+
         # 调试选项
         if self.config.debug_mode:
             chrome_options.add_argument('--enable-logging')
