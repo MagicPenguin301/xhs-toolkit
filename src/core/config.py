@@ -57,7 +57,8 @@ class XHSConfig:
         # 服务器配置
         self.server_host = os.getenv("SERVER_HOST", "0.0.0.0")
         self.server_port = int(os.getenv("SERVER_PORT", "8000"))
-        
+        self.api_port = int(os.getenv("API_PORT", "7474"))
+
         # 文件路径配置
         self.cookies_file = os.getenv("COOKIES_FILE", "xhs_cookies.json")
         self.cookies_dir = os.path.dirname(self.cookies_file) or "."
@@ -81,8 +82,9 @@ class XHSConfig:
     
     def _get_chrome_path(self) -> str:
         """获取Chrome浏览器路径"""
+        import os
         # 优先使用环境变量
-        env_chrome_path = os.getenv("CHROME_PATH")
+        env_chrome_path = os.getenv("CHROME_PATH") if os.name == "nt" else os.getenv("CHROME_PATH_LINUX")
         if env_chrome_path and os.path.exists(env_chrome_path):
             return env_chrome_path
         
@@ -137,7 +139,7 @@ class XHSConfig:
     def _get_chromedriver_path(self) -> str:
         """获取ChromeDriver路径"""
         # 优先使用环境变量
-        env_driver_path = os.getenv("WEBDRIVER_CHROME_DRIVER")
+        env_driver_path = os.getenv("WEBDRIVER_CHROME_DRIVER") if os.name=="nt" else os.getenv("WEBDRIVER_CHROME_DRIVER_LINUX")
         if env_driver_path and os.path.exists(env_driver_path):
             return env_driver_path
         
