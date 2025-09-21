@@ -7,3 +7,4 @@ __pycache__/
 *.log
 .git
 .gitignore
+xhs_cookies.json
