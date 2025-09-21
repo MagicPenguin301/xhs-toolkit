@@ -703,13 +703,18 @@ class CookieManager:
             logger.error(f"❌ 读取cookies失败: {e}")
     
     @handle_exception
-    def validate_cookies(self) -> bool:
+    def validate_cookies(self, verbose=False):
         """
-        验证cookies是否有效
+        验证cookies状态（提前五天提醒，并显示剩余天数）
         
         Returns:
-            cookies是否有效
-            
+            dict: cookies状态信息
+                - status: str，可能值：
+                    - "valid" 完全有效
+                    - "expiring_soon" 关键cookies即将过期（提前5天）
+                    - "invalid" 关键cookies已过期或缺失
+                - message: str，具体说明缺失或过期的cookies及剩余天数
+                
         Raises:
             AuthenticationError: 当验证过程出错时
         """
@@ -717,8 +722,8 @@ class CookieManager:
         
         if not cookies_file.exists():
             logger.warning("❌ Cookies文件不存在")
-            return False
-        
+            return {"status": "invalid", "message": "Cookies文件不存在"}
+
         try:
             with open(cookies_file, 'r', encoding='utf-8') as f:
                 cookies_data = json.load(f)
@@ -733,7 +738,7 @@ class CookieManager:
                 logger.info(f"📦 Cookies版本: {version}")
             
             logger.info("🔍 验证cookies...")
-            
+
             # 检查关键创作者cookies
             found_cookies = []
             for cookie in cookies:
@@ -741,51 +746,67 @@ class CookieManager:
                     found_cookies.append(cookie.get('name'))
             
             logger.info(f"✅ 找到关键创作者cookies: {found_cookies}")
-            
-            # 定义真正关键的cookies（必须存在的）
+
+            # 定义必须存在的cookies
             must_have_cookies = ['a1', 'webId', 'galaxy_creator_session_id', 
-                               'galaxy.creator.beaker.session.id', 'gid']
-            missing = set(must_have_cookies) - set(found_cookies)  # 检查必须的cookies
-            if missing:
-                logger.warning(f"⚠️ 缺少重要cookies: {list(missing)}")
-                logger.warning("💡 这可能导致创作者中心访问失败")
-            
-            # 检查过期时间
+                                'galaxy.creator.beaker.session.id', 'gid']
+            missing = set(must_have_cookies) - set(found_cookies)
+
+            # 检查过期时间（提前5天提醒）
             current_time = time.time()
-            expired_cookies = []
             expired_critical_cookies = []
-            
+            soon_expiring_critical_cookies = []
+
+            warning_seconds = 7 * 24 * 60 * 60  # 提前7天
             for cookie in cookies:
                 expiry = cookie.get('expiry')
                 cookie_name = cookie.get('name')
-                if expiry and expiry < current_time:
-                    expired_cookies.append(cookie_name)
-                    # 检查是否是关键cookie过期
-                    if cookie_name in CRITICAL_CREATOR_COOKIES:
+                if expiry and cookie_name in must_have_cookies:
+                    remaining_seconds = expiry - current_time
+                    if remaining_seconds <= 0:
                         expired_critical_cookies.append(cookie_name)
-            
-            if expired_cookies:
-                logger.warning(f"⚠️ 已过期的cookies: {expired_cookies}")
-                if expired_critical_cookies:
-                    logger.warning(f"❌ 关键cookies已过期: {expired_critical_cookies}")
+                    elif remaining_seconds <= warning_seconds:
+                        days_left = remaining_seconds / (24 * 3600)
+                        soon_expiring_critical_cookies.append((cookie_name, days_left))
+
+            # 构建 message
+            messages = []
+            if missing:
+                messages.append(f"缺少关键cookies: {list(missing)}")
+            if expired_critical_cookies:
+                messages.append(f"关键cookies已过期: {expired_critical_cookies}")
+            if soon_expiring_critical_cookies:
+                for name, days in soon_expiring_critical_cookies:
+                    messages.append(f"关键cookie '{name}'即将过期，剩余约 {days:.1f} 天")
+
+            if not messages:
+                messages.append("所有关键cookies有效")
+
+            message_str = "；".join(messages)
+            # 综合评估状态
+            if expired_critical_cookies:
+                status = "invalid"
+                message_str += "\n\ncookies失效，请立即更新！"
+            elif soon_expiring_critical_cookies:
+                status = "expiring_soon"
+                message_str += "\n\ncookies即将失效，请尽快更新！"
             else:
-                logger.info("✅ 所有cookies都未过期")
+                status = "valid"
+
             
-            # 综合评估 - 更宽松的验证逻辑
-            # 只要没有关键cookies过期，且缺少的关键cookies不超过2个就认为有效
-            is_valid = len(expired_critical_cookies) == 0 and len(missing) <= 2
-            
-            if is_valid:
-                logger.info("✅ Cookies验证通过，应该可以正常访问创作者中心")
+            logger.info(f"📊 Cookies状态: {status.upper()} - {message_str}")
+            if status != "valid":
+                logger.info("💡 建议运行命令: python xhs_toolkit.py cookie save")
+
+            if verbose:
+                print({"status": status, "message": message_str})
+                return {"status": status, "message": message_str}
             else:
-                logger.warning("❌ Cookies验证失败，建议重新获取")
-                logger.info("💡 运行命令: python xhs_toolkit.py cookie save")
-            
-            return is_valid
-            
+                return True if status != "invalid" else False
+
         except Exception as e:
             raise AuthenticationError(f"验证cookies失败: {str(e)}", auth_type="cookie_validate") from e
-    
+
     @handle_exception
     def test_chromedriver_config(self) -> bool:
         """

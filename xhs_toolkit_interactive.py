@@ -310,8 +310,8 @@ class InteractiveMenu:
                 safe_print("\n✅ 验证Cookies...")
                 from src.auth.cookie_manager import CookieManager
                 cookie_manager = CookieManager(self.config)
-                is_valid = cookie_manager.validate_cookies()
-                if is_valid:
+                status = cookie_manager.validate_cookies()
+                if status:
                     safe_print("\n✅ Cookies验证通过！")
                 else:
                     safe_print("\n❌ Cookies验证失败，建议重新获取")

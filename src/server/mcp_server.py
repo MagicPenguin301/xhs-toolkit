@@ -17,6 +17,7 @@ from typing import Dict, Any
 from dataclasses import dataclass, asdict
 import uvicorn
 from fastmcp import FastMCP
+from fastapi.responses import JSONResponse
 
 from ..core.config import XHSConfig
 from ..core.exceptions import format_error_message, XHSToolkitError
@@ -947,8 +948,9 @@ class MCPServer:
         app = FastAPI(title="XHS API")
 
         @app.get("/validate_cookies")
-        async def validate_cookies():
-            return self.xhs_client.cookie_manager.validate_cookies()
+        def validate_cookies():
+            result = self.xhs_client.cookie_manager.validate_cookies(verbose=True)
+            return JSONResponse([result])
 
         config = uvicorn.Config(
             app, host=self.config.server_host, port=self.config.api_port, log_level="info"
