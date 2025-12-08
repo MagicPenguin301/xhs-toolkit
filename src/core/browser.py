@@ -37,6 +37,77 @@ class ChromeDriverManager:
         self.is_initialized = False
     
     @handle_exception
+    def _create_webrtc_prevention_extension(self) -> str:
+        """
+        创建一个临时的Chrome扩展来强制禁用WebRTC (Manifest V3版本)
+        返回扩展的文件夹路径
+        """
+        import os
+        import tempfile
+
+        # 创建一个临时目录存放扩展文件
+        ext_dir = os.path.join(tempfile.gettempdir(), 'xhs_webrtc_blocker_v3')
+        os.makedirs(ext_dir, exist_ok=True)
+
+        # 1. manifest.json (更新为 V3 格式)
+        manifest_content = """
+        {
+            "name": "WebRTC Blocker V3",
+            "version": "1.0",
+            "manifest_version": 3,
+            "permissions": ["privacy"],
+            "background": {
+                "service_worker": "background.js"
+            }
+        }
+        """
+
+        # 2. background.js (Service Worker 逻辑)
+        # 直接在 Service Worker 启动时应用最高级别的屏蔽策略
+        background_content = """
+        // 监听插件安装或浏览器启动事件
+        chrome.runtime.onInstalled.addListener(() => {
+            applyWebRTCProtection();
+        });
+
+        chrome.runtime.onStartup.addListener(() => {
+            applyWebRTCProtection();
+        });
+
+        // 立即执行一次以防万一
+        applyWebRTCProtection();
+
+        function applyWebRTCProtection() {
+            // disable_non_proxied_udp: 禁止非代理的 UDP 流量
+            // 这是配合 SOCKS5 代理使用的最安全模式
+            chrome.privacy.network.webRTCIPHandlingPolicy.set({
+                value: "disable_non_proxied_udp"
+            }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error("WebRTC Policy Error:", chrome.runtime.lastError);
+                } else {
+                    console.log("🛡️ WebRTC Blocker: Policy set to disable_non_proxied_udp");
+                }
+            });
+        }
+        """
+
+        # 写入文件
+        try:
+            with open(os.path.join(ext_dir, 'manifest.json'), 'w', encoding='utf-8') as f:
+                f.write(manifest_content)
+                
+            with open(os.path.join(ext_dir, 'background.js'), 'w', encoding='utf-8') as f:
+                f.write(background_content)
+                
+            logger.info(f"🛡️ WebRTC V3 屏蔽插件已生成: {ext_dir}")
+            return ext_dir
+            
+        except Exception as e:
+            logger.error(f"生成WebRTC插件失败: {e}")
+            raise e
+
+    @handle_exception
     def create_driver(self) -> webdriver.Chrome:
         """
         创建Chrome浏览器驱动
@@ -78,13 +149,15 @@ class ChromeDriverManager:
             
         except Exception as e:
             raise BrowserError(f"创建Chrome驱动失败: {str(e)}", browser_action="create_driver") from e
-    
+
     def _create_chrome_options(self) -> Options:
         """创建Chrome选项"""
         chrome_options = Options()
         
         # 本地浏览器启动配置
         logger.info("🖥️ 启用本地浏览器模式")
+
+        chrome_options.add_argument('--proxy-bypass-list=<-loopback>')
         
         # 基础选项
         chrome_options.add_argument('--no-sandbox')
@@ -128,7 +201,7 @@ class ChromeDriverManager:
             
             # 窗口设置（即使无头模式也设置）
             chrome_options.add_argument('--start-maximized')
-            
+
             logger.info("🔒 启用强制无头浏览器模式（双重保险）")
         
         # 设置Chrome可执行文件路径
@@ -172,6 +245,45 @@ class ChromeDriverManager:
             chrome_options.add_argument('--enable-logging')
             chrome_options.add_argument('--log-level=0')
             logger.debug("已启用Chrome调试日志")
+
+        # 配置代理
+        if self.config.proxy and self.config.local_proxy:
+            local_proxy = self.config.local_proxy
+            remote_proxy = self.config.proxy
+            if local_proxy:
+                logger.info(f"🛡️ 启用代理配置: {local_proxy} (remote: {remote_proxy})")
+                # Chrome 接受的格式: --proxy-server=socks5://127.0.0.1:1080
+                chrome_options.add_argument(f'--proxy-server={local_proxy}')
+
+        # 隐藏自动化特征
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+
+        # --- [新增] 加载防WebRTC泄漏 ---
+        try:
+            webrtc_ext_path = self._create_webrtc_prevention_extension()
+            chrome_options.add_argument(f'--load-extension={webrtc_ext_path}')
+            logger.info("🛡️ 已加载 WebRTC 屏蔽插件")
+        except Exception as e:
+            logger.error(f"无法加载WebRTC插件: {e}")
+
+        # --- [保留] 双重保险：继续保留之前的 Prefs 设置 ---
+        # 即使有了插件，这些设置也建议保留，作为兜底
+        preferences = {
+            "webrtc.ip_handling_policy": "disable_non_proxied_udp",
+            "webrtc.multiple_routes_enabled": False,
+            "webrtc.nonproxied_udp_enabled": False,
+            "profile.password_manager_enabled": False
+        }
+        chrome_options.add_experimental_option("prefs", preferences)
+
+        # --- [新增] 强力静音模式 ---
+        # 设置日志级别为 3 (FATAL)，只有极其严重的崩溃才会打印
+        chrome_options.add_argument('--log-level=3')
+        chrome_options.add_argument('--silent')
+        
+        # 移除控制台多余输出
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
         
         logger.debug("本地浏览器选项配置完成")
         return chrome_options

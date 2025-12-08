@@ -79,6 +79,11 @@ class XHSConfig:
         
         # 其他配置
         self.timeout = int(os.getenv("TIMEOUT", "30"))
+
+        # 代理配置
+        self.proxy: Optional[str] = os.getenv("PROXY", None)
+        self.local_proxy: Optional[str] = os.getenv("LOCAL_PROXY", None)
+
     
     def _get_chrome_path(self) -> str:
         """获取Chrome浏览器路径"""
@@ -247,6 +252,9 @@ REMOTE_BROWSER_HOST=localhost
 # 远程浏览器调试端口（Chrome启动时的--remote-debugging-port参数）
 REMOTE_BROWSER_PORT=9222
 
+# 代理配置
+# PROXY=
+
 # 超时设置（秒）
 TIMEOUT=30
 """
@@ -287,9 +295,10 @@ TIMEOUT=30
             "enable_remote_browser": self.enable_remote_browser,
             "remote_browser_host": self.remote_browser_host,
             "remote_browser_port": self.remote_browser_port,
+            "proxy": self.proxy,
             "timeout": self.timeout,
             "platform": platform.system(),
-            "python_version": platform.python_version()
+            "python_version": platform.python_version(),
         }
     
     def __str__(self) -> str:

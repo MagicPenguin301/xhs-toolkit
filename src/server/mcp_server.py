@@ -18,7 +18,7 @@ from dataclasses import dataclass, asdict
 import uvicorn
 from fastmcp import FastMCP
 from fastapi.responses import JSONResponse
-
+import pproxy
 from ..core.config import XHSConfig
 from ..core.exceptions import format_error_message, XHSToolkitError
 from ..xiaohongshu.client import XHSClient
@@ -744,12 +744,13 @@ class MCPServer:
         except Exception as e:
             error_msg = f"任务执行失败: {str(e)}"
             logger.error(f"❌ 任务 {task_id} 执行失败: {e}")
+            result = {"success": False, "message": error_msg}
             self.task_manager.update_task(
                 task_id,
                 status="failed",
                 progress=0,
                 message=error_msg,
-                result={"success": False, "message": error_msg},
+                result=result,
             )
         finally:
             # callback if applicable
@@ -757,7 +758,7 @@ class MCPServer:
                 import requests
 
                 time.sleep(3)
-                requests.get(callback_url)
+                requests.get(callback_url, params=result if result is dict else result.to_dict())
             # 清理运行任务记录
             if task_id in self.task_manager.running_tasks:
                 del self.task_manager.running_tasks[task_id]
@@ -943,7 +944,7 @@ class MCPServer:
         logger.info("🎯 MCP工具已注册，等待客户端连接...")
         self.mcp.run(transport="stdio")
 
-    async def _run_fast_api_server(self):
+    async def _run_cookies_fast_api_server(self):
         logger.info("🚀 正在启动FastAPI服务器...")
         app = FastAPI(title="XHS API")
 
@@ -958,6 +959,37 @@ class MCPServer:
         server = uvicorn.Server(config)
         await server.serve()
         logger.info("✅ API服务器启动成功")
+
+    async def _run_proxy_server(self):
+        # ---------------- 配置区域 ----------------
+        # 1. 本地监听地址 (给 Chrome 用的)
+        # 格式: socks5://IP:端口 (注意这里没有用户名和密码！)
+        if self.config.proxy and self.config.local_proxy:
+            local_listen = self.config.local_proxy # 'socks5://127.0.0.1:8080'
+            
+            # 2. 远程上游代理 (你购买的香港代理)
+            # 格式: socks5://用户名:密码@IP:端口
+            # 注意：如果密码里有特殊字符，一定要确认没有被解析错误
+            remote_proxy = self.config.proxy # 'socks5://qku:cry@43.100.133.72:11315'
+            
+            # -----------------------------------------
+
+            print("🚀 启动本地中转服务...")
+            print(f"✅ Chrome 请连接: {local_listen}")
+            print(f"🔗 流量将转发至: {remote_proxy}")
+
+            # 创建本地服务器 (无密码)
+            server = pproxy.Server(local_listen)
+            
+            # 创建远程连接 (有密码)
+            remote_conn = pproxy.Connection(remote_proxy)
+            
+            # 启动转发
+            # verbose=print 会在控制台打印每一条连接日志，不需要可以删掉
+            await server.start_server(dict(rserver=[remote_conn]))  # , verbose=print))
+            
+            # 永久运行
+            await asyncio.Event().wait()
 
     async def _run_mcp_server(self):
         await self.mcp.run_async(
@@ -1034,7 +1066,8 @@ class MCPServer:
 
             # 启动服务器
             await asyncio.gather(
-                self._run_fast_api_server(),
+                self._run_proxy_server(),
+                self._run_cookies_fast_api_server(),
                 self._run_mcp_server()
             )
 
